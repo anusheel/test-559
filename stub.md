@@ -31,66 +31,75 @@ Use Octokit package.
 
 ```
 
-<details open id="a2d0f58230841b9a1ca80faebe0060a4">
+<details open id="511cf48ce08c7150c6415ac1cf501742">
 <summary></summary>
 
-To create a Next.js application with TypeScript and Octokit for GitHub authentication and displaying user repositories, follow the steps below:
-
-First, install the necessary packages:
+First, we need to install the necessary packages. We will use `yarn` as our package manager. The packages we need are `next`, `react`, `react-dom` for the Next.js framework, `@types/node` and `@types/react` for TypeScript definitions, `typescript` for TypeScript language support, `dotenv` for environment variable management, `next-auth` for authentication, `@octokit/rest` for GitHub API client, and `isomorphic-unfetch` for making fetch requests on both client and server.
 
 ```bash
-npx create-next-app@latest --typescript
-npm install @octokit/rest next-auth
+yarn add next react react-dom @types/node @types/react typescript dotenv next-auth @octokit/rest isomorphic-unfetch
 ```
 
-Next, create a file named `.../pages/api/auth/[...nextauth].ts` and add the following code:
+Next, we need to create a `.env` file in the root directory of the project to store our GitHub OAuth application credentials. These credentials can be obtained by creating a new OAuth application in GitHub settings.
+
+```bash
+touch .env
+```
+
+Inside the `.env` file, add the following lines:
+
+```env
+GITHUB_ID=your_github_client_id
+GITHUB_SECRET=your_github_client_secret
+NEXTAUTH_URL=http://localhost:3000
+```
+
+Now, let's create a `next.config.js` file in the root directory of the project to load our environment variables.
+
+```javascript
+module.exports = {
+  env: {
+    GITHUB_ID: process.env.GITHUB_ID,
+    GITHUB_SECRET: process.env.GITHUB_SECRET,
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+  },
+};
+```
+
+Next, we need to set up NextAuth for GitHub authentication. Create a file named `[...nextauth].ts` inside the `pages/api/auth` directory.
 
 ```typescript
 import NextAuth from 'next-auth'
 import Providers from 'next-auth/providers'
-import { Octokit } from "@octokit/rest";
 
 export default NextAuth({
   providers: [
     Providers.GitHub({
       clientId: process.env.GITHUB_ID,
       clientSecret: process.env.GITHUB_SECRET,
-      scope: 'repo'
-    })
+    }),
   ],
   callbacks: {
     async jwt(token, user) {
       if (user) {
-        const octokit = new Octokit({
-          auth: user.accessToken,
-        });
-
-        const { data } = await octokit.repos.listForAuthenticatedUser();
-        token.userRepos = data;
+        token.id = user.id
       }
       return token
     },
     async session(session, token) {
-      session.user.repos = token.userRepos;
+      session.user.id = token.id
       return session
-    }
-  }
+    },
+  },
 })
 ```
 
-In this file, we are using the GitHub provider for NextAuth.js and setting the scope to 'repo' to get access to the user's repositories. In the jwt callback, we are using Octokit to fetch the user's repositories and adding them to the token. In the session callback, we are adding the repositories to the session.
-
-Next, create a `.env.local` file in the root of your project and add your GitHub app credentials:
-
-```bash
-GITHUB_ID=your_github_app_client_id
-GITHUB_SECRET=your_github_app_client_secret
-```
-
-Finally, create a file named `.../pages/index.tsx` and add the following code:
+Now, let's create a `pages/index.tsx` file to display the login button and the list of repositories.
 
 ```typescript
 import { signIn, signOut, useSession } from 'next-auth/client'
+import { Octokit } from '@octokit/rest'
+import fetch from 'isomorphic-unfetch'
 
 export default function Home() {
   const [session, loading] = useSession()
@@ -102,33 +111,65 @@ export default function Home() {
   if (!session) {
     return (
       <div>
-        Not signed in <br/>
-        <button onClick={() => signIn()}>Sign in</button>
+        Not signed in <br />
+        <button onClick={() => signIn('github')}>Sign in with GitHub</button>
       </div>
     )
   }
 
   return (
     <div>
-      Signed in as {session.user.email} <br/>
+      Signed in as {session.user.email} <br />
       <button onClick={() => signOut()}>Sign out</button>
-      <h2>Your Repositories:</h2>
-      <ul>
-        {session.user.repos.map((repo: any) => (
-          <li key={repo.id}>
-            <a href={repo.html_url} target="_blank">{repo.name}</a>
-          </li>
-        ))}
-      </ul>
+      <RepoList session={session} />
     </div>
+  )
+}
+
+function RepoList({ session }) {
+  const [repos, setRepos] = React.useState([])
+
+  React.useEffect(() => {
+    const octokit = new Octokit({
+      auth: session.accessToken,
+    })
+
+    octokit.repos
+      .listForAuthenticatedUser()
+      .then(({ data }) => {
+        setRepos(data)
+      })
+      .catch((err) => console.error(err))
+  }, [session])
+
+  return (
+    <ul>
+      {repos.map((repo) => (
+        <li key={repo.id}>
+          <a href={repo.html_url} target="_blank" rel="noopener noreferrer">
+            {repo.name}
+          </a>
+        </li>
+      ))}
+    </ul>
   )
 }
 ```
 
-In this file, we are using the useSession hook from NextAuth.js to get the current user session. If the user is not signed in, we display a sign in button. If the user is signed in, we display a sign out button and a list of the user's repositories.
+Finally, add a `scripts` section to your `package.json` file to start the development server.
 
-Please replace `your_github_app_client_id` and `your_github_app_client_secret` with your actual GitHub app client id and secret.
+```json
+"scripts": {
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start"
+}
+```
+
+Now, you can start the development server by running `yarn dev` in your terminal. Open `http://localhost:3000` in your browser to see the result.
 </details>
+
+
 
 
 
